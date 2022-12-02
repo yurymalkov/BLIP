@@ -35,12 +35,16 @@ class BLIP_Base(nn.Module):
             vit (str): model size of vision transformer
         """               
         super().__init__()
+        embed_dim = 256
         
         self.visual_encoder, vision_width = create_vit(vit,image_size, vit_grad_ckpt, vit_ckpt_layer)
         self.tokenizer = init_tokenizer()   
         med_config = BertConfig.from_json_file(med_config)
         med_config.encoder_width = vision_width
         self.text_encoder = BertModel(config=med_config, add_pooling_layer=False)  
+        text_width = self.text_encoder.config.hidden_size
+        self.vision_proj_m = nn.Linear(vision_width, embed_dim)        
+        self.text_proj_m = nn.Linear(text_width, embed_dim)
 
         
     def forward(self, image, caption, mode):
@@ -51,13 +55,15 @@ class BLIP_Base(nn.Module):
         if mode=='image':    
             # return image features
             image_embeds = self.visual_encoder(image)             
-            return image_embeds
+            image_feat_m = F.normalize(self.vision_proj_m(image_embeds[:,0,:]),dim=-1)  
+            return image_feat_m
         
         elif mode=='text':
             # return text features
             text_output = self.text_encoder(text.input_ids, attention_mask = text.attention_mask,                      
                                             return_dict = True, mode = 'text')  
-            return text_output.last_hidden_state
+            text_feat_m = F.normalize(self.text_proj_m(text_output.last_hidden_state[:,0,:]),dim=-1) 
+            return text_feat_m
         
         elif mode=='multimodal':
             # return multimodel features
